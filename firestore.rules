@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función para verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función para obtener el rol del usuario desde el documento
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol;
+    }
+    
+    // Función para verificar si es administrador
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'administrador';
+    }
+    
+    // Función para verificar si es profesor
+    function isTeacher() {
+      return isAuthenticated() && getUserRole() == 'profesor';
+    }
+    
+    // Función para verificar si es estudiante
+    function isStudent() {
+      return isAuthenticated() && getUserRole() == 'estudiante';
+    }
+    
+    // Función para verificar si el usuario puede acceder a su propio documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // REGLAS PARA COLECCIÓN USERS
+    match /users/{userId} {
+      // Lectura: Solo admin puede ver todos los usuarios, cada usuario puede ver su propio perfil
+      allow read: if isAdmin() || isOwner(userId);
+      
+      // Creación: Solo estudiantes pueden crear su propio perfil (registro)
+      // Los profesores y admins se crean desde el backend
+      allow create: if !isAuthenticated() && 
+                      request.resource.data.rol == 'estudiante' &&
+                      request.resource.data.cedula == userId;
+      
+      // Actualización: Admin puede actualizar cualquier usuario, 
+      // cada usuario puede actualizar su propio perfil (excepto rol)
+      allow update: if isAdmin() || 
+                      (isOwner(userId) && 
+                       !('rol' in request.resource.data.diff(resource.data).affectedKeys()));
+      
+      // Eliminación: Solo admin (realmente cambia estado a inactivo)
+      allow delete: if isAdmin();
+    }
+    
+    // REGLAS PARA COLECCIÓN COURSES  
+    match /courses/{courseId} {
+      // Lectura: Todos los usuarios autenticados pueden ver cursos
+      allow read: if isAuthenticated();
+      
+      // Creación: Solo administradores pueden crear cursos
+      allow create: if isAdmin();
+      
+      // Actualización: Admin puede actualizar cualquier curso,
+      // Profesor puede actualizar solo los cursos asignados a él
+      allow update: if isAdmin() || 
+                      (isTeacher() && resource.data.docenteAsignado == request.auth.uid);
+      
+      // Eliminación: Solo administradores (realmente cambia estado a cancelado)
+      allow delete: if isAdmin();
+    }
+    
+    // REGLAS PARA COLECCIÓN ENROLLMENTS
+    match /enrollments/{enrollmentId} {
+      // Lectura: Admin ve todas, profesor ve las de sus cursos, estudiante ve las suyas
+      allow read: if isAdmin() || 
+                     (isTeacher() && 
+                      get(/databases/$(database)/documents/courses/$(resource.data.cursoId)).data.docenteAsignado == request.auth.uid) ||
+                     (isStudent() && resource.data.estudianteCedula == request.auth.uid);
+      
+      // Creación: Solo estudiantes pueden inscribirse a cursos
+      allow create: if isStudent() && 
+                       request.resource.data.estudianteCedula == request.auth.uid;
+      
+      // Actualización: Admin puede actualizar cualquier matrícula,
+      // Estudiante puede retirarse de sus cursos (cambiar estado)
+      allow update: if isAdmin() || 
+                       (isStudent() && 
+                        resource.data.estudianteCedula == request.auth.uid &&
+                        request.resource.data.estado == 'retirado');
+      
+      // Eliminación: Solo administradores
+      allow delete: if isAdmin();
+    }
+    
+    // REGLAS PARA COLECCIÓN GRADES
+    match /grades/{gradeId} {
+      // Lectura: Admin ve todas, profesor ve las que registró, 
+      // estudiante ve solo sus propias notas
+      allow read: if isAdmin() || 
+                     (isTeacher() && resource.data.profesorCedula == request.auth.uid) ||
+                     (isStudent() && resource.data.estudianteCedula == request.auth.uid);
+      
+      // Creación: Admin y profesores pueden crear notas
+      // Los profesores solo en cursos asignados a ellos
+      allow create: if isAdmin() || 
+                       (isTeacher() && 
+                        request.resource.data.profesorCedula == request.auth.uid &&
+                        get(/databases/$(database)/documents/courses/$(request.resource.data.cursoId)).data.docenteAsignado == request.auth.uid);
+      
+      // Actualización: Admin puede actualizar cualquier nota,
+      // Profesor puede actualizar solo las notas que registró
+      allow update: if isAdmin() || 
+                       (isTeacher() && resource.data.profesorCedula == request.auth.uid);
+      
+      // Eliminación: Admin y profesor que registró la nota
+      allow delete: if isAdmin() || 
+                       (isTeacher() && resource.data.profesorCedula == request.auth.uid);
+    }
+    
+    // REGLAS POR DEFECTO: Denegar todo lo demás
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

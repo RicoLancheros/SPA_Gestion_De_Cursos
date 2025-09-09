@@ -182,3 +182,6 @@ public/uploads/
 
 # Claude Code (herramienta de desarrollo)
 .claude
+
+# Archivo de contexto del proyecto (descarga manual)
+Contexto.md

@@ -175,3 +175,61 @@ SPA_Gestion_De_Cursos/
 ## Desarrollo
 
 El proyecto sigue una arquitectura MVC (Model-View-Controller) con separación clara entre frontend y backend. La comunicación se realiza a través de una API REST con autenticación JWT y almacenamiento en Firebase Firestore.
+
+## Credenciales:
+
+  👑 ADMINISTRADOR
+
+  - Cédula: 1234567890
+  - Contraseña: admin123
+  - Nombre: Administrador Sistema
+  - Email: admin@spa-gestion-cursos.com
+  - Permisos: Acceso completo al sistema
+
+  ---
+  👨‍🏫 PROFESORES
+
+  Profesor 1:
+  - Cédula: 9876543210
+  - Contraseña: profesor123
+  - Nombre: María García
+  - Email: maria.garcia@spa-gestion-cursos.com
+
+  Profesor 2:
+  - Cédula: 1122334455
+  - Contraseña: profesor123
+  - Nombre: Carlos Rodríguez
+  - Email: carlos.rodriguez@spa-gestion-cursos.com
+
+  Profesor 3:
+  - Cédula: 5544332211
+  - Contraseña: profesor123
+  - Nombre: Ana López
+  - Email: ana.lopez@spa-gestion-cursos.com
+
+  ---
+  🎓 ESTUDIANTES
+
+  Estudiante 1:
+  - Cédula: SSSSSS
+  - Contraseña: estudiante123
+  - Nombre: Juan Pérez
+  - Email: juan.perez@estudiante.com
+
+  Estudiante 2:
+  - Cédula: 2002002002
+  - Contraseña: estudiante123
+  - Nombre: Laura Martínez
+  - Email: laura.martinez@estudiante.com
+
+  Estudiante 3:
+  - Cédula: 3003003003
+  - Contraseña: estudiante123
+  - Nombre: Diego Sánchez
+  - Email: diego.sanchez@estudiante.com
+
+  Estudiante 4:
+  - Cédula: 4004004004
+  - Contraseña: estudiante123
+  - Nombre: Sofia Torres
+  - Email: sofia.torres@estudiante.com
