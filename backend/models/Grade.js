@@ -6,13 +6,10 @@ class Grade {
     this.id = data.id || uuidv4();
     this.estudianteCedula = data.estudianteCedula;
     this.cursoId = data.cursoId;
+    this.taskId = data.taskId; // ID de la tarea asociada
     this.nota = data.nota;
-    this.tipo = data.tipo; // 'parcial', 'final', 'quiz', 'tarea'
-    this.descripcion = data.descripcion;
-    this.fechaEvaluacion = data.fechaEvaluacion || new Date();
     this.fechaRegistro = data.fechaRegistro || new Date();
     this.profesorCedula = data.profesorCedula; // quien registró la nota
-    this.peso = data.peso || 1; // peso de la evaluación para el promedio
     this.observaciones = data.observaciones || null;
     this.estado = data.estado || 'definitiva'; // 'provisional', 'definitiva'
   }
@@ -31,6 +28,11 @@ class Grade {
       errors.push('El ID del curso es requerido');
     }
 
+    // Validar ID de la tarea (requerido)
+    if (!gradeData.taskId || gradeData.taskId.trim() === '') {
+      errors.push('El ID de la tarea es requerido');
+    }
+
     // Validar nota (requerida, debe estar entre 0 y 5)
     if (gradeData.nota === undefined || gradeData.nota === null) {
       errors.push('La nota es requerida');
@@ -38,25 +40,9 @@ class Grade {
       errors.push('La nota debe ser un número entre 0 y 5');
     }
 
-    // Validar tipo de evaluación
-    const tiposValidos = ['parcial', 'final', 'quiz', 'tarea'];
-    if (!gradeData.tipo || !tiposValidos.includes(gradeData.tipo)) {
-      errors.push('El tipo de evaluación debe ser: parcial, final, quiz o tarea');
-    }
-
-    // Validar descripción (requerida)
-    if (!gradeData.descripcion || gradeData.descripcion.trim() === '') {
-      errors.push('La descripción de la evaluación es requerida');
-    }
-
     // Validar cédula del profesor (requerida)
     if (!gradeData.profesorCedula || gradeData.profesorCedula.trim() === '') {
       errors.push('La cédula del profesor es requerida');
-    }
-
-    // Validar peso (debe ser un número positivo)
-    if (gradeData.peso !== undefined && (typeof gradeData.peso !== 'number' || gradeData.peso <= 0)) {
-      errors.push('El peso debe ser un número positivo');
     }
 
     // Validar estado
@@ -80,6 +66,13 @@ class Grade {
         throw new Error(`Datos inválidos: ${validation.errors.join(', ')}`);
       }
 
+      // Verificar que la tarea existe
+      const Task = (await import('./Task.js')).default;
+      const task = await Task.findById(gradeData.taskId);
+      if (!task) {
+        throw new Error('La tarea no existe');
+      }
+
       // Verificar que el estudiante existe y tiene rol de estudiante
       const User = (await import('./User.js')).default;
       const estudiante = await User.findByCedula(gradeData.estudianteCedula);
@@ -95,20 +88,24 @@ class Grade {
       if (!profesor) {
         throw new Error('El profesor no existe');
       }
-      if (profesor.rol !== 'profesor') {
-        throw new Error('El usuario no tiene rol de profesor');
+      if (profesor.rol !== 'profesor' && profesor.rol !== 'administrador') {
+        throw new Error('Solo profesores y administradores pueden calificar');
       }
 
-      // Verificar que el curso existe
+      // Verificar que el curso existe y coincide con la tarea
       const Course = (await import('./Course.js')).default;
       const curso = await Course.findById(gradeData.cursoId);
       if (!curso) {
         throw new Error('El curso no existe');
       }
 
-      // Verificar que el profesor está asignado al curso
-      if (curso.docenteAsignado !== gradeData.profesorCedula) {
-        throw new Error('El profesor no está asignado a este curso');
+      if (task.cursoId !== gradeData.cursoId) {
+        throw new Error('La tarea no pertenece al curso especificado');
+      }
+
+      // Verificar que el profesor puede calificar esta tarea (es suya o es admin)
+      if (profesor.rol === 'profesor' && task.profesorCedula !== gradeData.profesorCedula) {
+        throw new Error('Solo puedes calificar tareas que hayas creado');
       }
 
       // Verificar que el estudiante está inscrito en el curso
@@ -119,6 +116,15 @@ class Grade {
       );
       if (!enrollment || enrollment.estado !== 'activo') {
         throw new Error('El estudiante no está inscrito en este curso');
+      }
+
+      // Verificar que no existe ya una calificación para este estudiante en esta tarea
+      const existingGrade = await Grade.findByStudentAndTask(
+        gradeData.estudianteCedula,
+        gradeData.taskId
+      );
+      if (existingGrade) {
+        throw new Error('Ya existe una calificación para este estudiante en esta tarea');
       }
 
       // Crear objeto calificación
@@ -132,13 +138,10 @@ class Grade {
         id: newGrade.id,
         estudianteCedula: newGrade.estudianteCedula,
         cursoId: newGrade.cursoId,
+        taskId: newGrade.taskId,
         nota: newGrade.nota,
-        tipo: newGrade.tipo,
-        descripcion: newGrade.descripcion,
-        fechaEvaluacion: newGrade.fechaEvaluacion,
         fechaRegistro: newGrade.fechaRegistro,
         profesorCedula: newGrade.profesorCedula,
-        peso: newGrade.peso,
         observaciones: newGrade.observaciones,
         estado: newGrade.estado
       });
@@ -173,7 +176,7 @@ class Grade {
         query = query.where('cursoId', '==', cursoId);
       }
 
-      const snapshot = await query.orderBy('fechaEvaluacion', 'desc').get();
+      const snapshot = await query.orderBy('fechaRegistro', 'desc').get();
       const grades = [];
 
       snapshot.forEach(doc => {
@@ -183,6 +186,45 @@ class Grade {
       return grades;
     } catch (error) {
       throw new Error(`Error obteniendo calificaciones del estudiante: ${error.message}`);
+    }
+  }
+
+  // Obtener todas las calificaciones de una tarea
+  static async findByTask(taskId) {
+    try {
+      const snapshot = await db.collection('grades')
+        .where('taskId', '==', taskId)
+        .orderBy('fechaRegistro', 'desc')
+        .get();
+
+      const grades = [];
+      snapshot.forEach(doc => {
+        grades.push({ ...doc.data() });
+      });
+
+      return grades;
+    } catch (error) {
+      throw new Error(`Error obteniendo calificaciones de la tarea: ${error.message}`);
+    }
+  }
+
+  // Buscar calificación específica de un estudiante en una tarea
+  static async findByStudentAndTask(estudianteCedula, taskId) {
+    try {
+      const snapshot = await db.collection('grades')
+        .where('estudianteCedula', '==', estudianteCedula)
+        .where('taskId', '==', taskId)
+        .limit(1)
+        .get();
+
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        return { ...doc.data() };
+      }
+
+      return null;
+    } catch (error) {
+      throw new Error(`Error buscando calificación del estudiante en la tarea: ${error.message}`);
     }
   }
 
@@ -196,11 +238,25 @@ class Grade {
         query = query.where('tipo', '==', tipo);
       }
 
-      const snapshot = await query.orderBy('fechaEvaluacion', 'desc').get();
-      const grades = [];
+      // Intentar con orderBy, si falla, obtener sin ordenar
+      let snapshot;
+      try {
+        snapshot = await query.orderBy('fechaEvaluacion', 'desc').get();
+      } catch (orderError) {
+        console.warn('Error con orderBy, obteniendo sin ordenar:', orderError.message);
+        snapshot = await query.get();
+      }
 
+      const grades = [];
       snapshot.forEach(doc => {
         grades.push({ ...doc.data() });
+      });
+
+      // Ordenar manualmente si no se pudo hacer en la consulta
+      grades.sort((a, b) => {
+        const dateA = a.fechaEvaluacion?.seconds ? new Date(a.fechaEvaluacion.seconds * 1000) : new Date(a.fechaEvaluacion);
+        const dateB = b.fechaEvaluacion?.seconds ? new Date(b.fechaEvaluacion.seconds * 1000) : new Date(b.fechaEvaluacion);
+        return dateB - dateA;
       });
 
       return grades;
@@ -300,16 +356,20 @@ class Grade {
         return null;
       }
 
-      // Calcular promedio ponderado
+      // Obtener información de las tareas para calcular el promedio ponderado
+      const Task = (await import('./Task.js')).default;
       let totalNota = 0;
       let totalPeso = 0;
 
-      grades.forEach(grade => {
+      for (const grade of grades) {
         if (grade.estado === 'definitiva') {
-          totalNota += grade.nota * grade.peso;
-          totalPeso += grade.peso;
+          const task = await Task.findById(grade.taskId);
+          const peso = task ? task.peso : 1;
+          
+          totalNota += grade.nota * peso;
+          totalPeso += peso;
         }
-      });
+      }
 
       const promedio = totalPeso > 0 ? totalNota / totalPeso : 0;
 

@@ -26,7 +26,7 @@ import {
   People,
   School,
   Assignment,
-  Grade,
+  Task as TaskIcon,
   AccountCircle,
   Logout,
   Settings,
@@ -91,21 +91,21 @@ const Layout = () => {
         { text: 'Usuarios', icon: <People />, path: '/users' },
         { text: 'Cursos', icon: <School />, path: '/courses' },
         { text: 'Matrículas', icon: <Assignment />, path: '/enrollments' },
-        { text: 'Calificaciones', icon: <Grade />, path: '/grades' }
+        { text: 'Tareas', icon: <TaskIcon />, path: '/tasks' }
       ];
     } else if (isTeacher) {
       return [
         ...commonItems,
         { text: 'Mis Cursos', icon: <School />, path: '/my-courses' },
         { text: 'Estudiantes', icon: <People />, path: '/my-students' },
-        { text: 'Calificaciones', icon: <Grade />, path: '/my-grades' }
+        { text: 'Mis Tareas', icon: <TaskIcon />, path: '/my-tasks' }
       ];
     } else if (isStudent) {
       return [
         ...commonItems,
         { text: 'Cursos Disponibles', icon: <School />, path: '/available-courses' },
         { text: 'Mis Inscripciones', icon: <Assignment />, path: '/my-enrollments' },
-        { text: 'Mis Calificaciones', icon: <Grade />, path: '/my-grades' }
+        { text: 'Mis Tareas', icon: <TaskIcon />, path: '/my-tasks' }
       ];
     }
 

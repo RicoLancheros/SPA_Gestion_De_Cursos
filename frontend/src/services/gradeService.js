@@ -43,6 +43,12 @@ class GradeService {
     return response.data;
   }
 
+  // Obtener calificaciones de una tarea específica
+  static async getTaskGrades(taskId) {
+    const response = await apiClient.get(`/grades/task/${taskId}`);
+    return response.data;
+  }
+
   // Actualizar calificación (profesor del curso y admin)
   static async updateGrade(id, updateData) {
     const response = await apiClient.put(`/grades/${id}`, updateData);

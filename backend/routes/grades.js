@@ -19,6 +19,9 @@ router.get('/student/:cedula', GradeController.getStudentGrades);
 // Obtener reporte completo de un estudiante (todas sus materias)
 router.get('/student/:cedula/report', GradeController.getStudentReport);
 
+// Obtener calificaciones de una tarea específica
+router.get('/task/:taskId', AuthMiddleware.requireAdminOrTeacher, GradeController.getTaskGrades);
+
 // Obtener calificaciones de un curso (profesores del curso y admin)
 router.get('/course/:cursoId', AuthMiddleware.requireAdminOrTeacher, GradeController.getCourseGrades);
 

@@ -11,16 +11,18 @@ class GradeController {
       const {
         estudianteCedula,
         cursoId,
-        tipoEvaluacion,
-        valor,
+        tipo,
+        nota,
         descripcion,
-        fecha
+        peso,
+        observaciones,
+        fechaEvaluacion
       } = req.body;
 
-      if (!estudianteCedula || !cursoId || !tipoEvaluacion || valor === undefined) {
+      if (!estudianteCedula || !cursoId || !tipo || nota === undefined) {
         return res.status(400).json({
           error: 'BadRequest',
-          message: 'Cédula del estudiante, ID del curso, tipo de evaluación y valor son requeridos'
+          message: 'Cédula del estudiante, ID del curso, tipo de evaluación y nota son requeridos'
         });
       }
 
@@ -59,11 +61,13 @@ class GradeController {
       const gradeData = {
         estudianteCedula,
         cursoId,
-        docenteCedula: req.user.cedula,
-        tipoEvaluacion,
-        valor,
+        profesorCedula: req.user.cedula,
+        tipo,
+        nota: parseFloat(nota),
         descripcion,
-        fecha: fecha ? new Date(fecha) : new Date()
+        peso: peso ? parseFloat(peso) : 1,
+        observaciones: observaciones || null,
+        fechaEvaluacion: fechaEvaluacion ? new Date(fechaEvaluacion) : new Date()
       };
 
       const newGrade = await Grade.create(gradeData);
@@ -170,37 +174,30 @@ class GradeController {
     }
   }
 
-  // Obtener calificaciones de un curso (profesores del curso y admin)
-  static async getCourseGrades(req, res) {
+  // Obtener calificaciones de una tarea específica
+  static async getTaskGrades(req, res) {
     try {
-      const { cursoId } = req.params;
-      const { estudianteCedula, tipoEvaluacion } = req.query;
+      const { taskId } = req.params;
 
-      // Verificar permisos para profesores
-      if (req.user.rol === 'profesor') {
-        const course = await Course.findById(cursoId);
-        
-        if (!course) {
-          return res.status(404).json({
-            error: 'NotFound',
-            message: 'Curso no encontrado'
-          });
-        }
-
-        if (course.docenteAsignado !== req.user.cedula) {
-          return res.status(403).json({
-            error: 'Forbidden',
-            message: 'Solo puedes ver calificaciones de tus cursos asignados'
-          });
-        }
+      // Verificar que la tarea existe
+      const Task = (await import('../models/Task.js')).default;
+      const task = await Task.findById(taskId);
+      if (!task) {
+        return res.status(404).json({
+          error: 'NotFound',
+          message: 'Tarea no encontrada'
+        });
       }
 
-      // Construir filtros
-      const filters = { cursoId };
-      if (estudianteCedula) filters.estudianteCedula = estudianteCedula;
-      if (tipoEvaluacion) filters.tipoEvaluacion = tipoEvaluacion;
+      // Verificar permisos para profesores
+      if (req.user.rol === 'profesor' && task.profesorCedula !== req.user.cedula) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Solo puedes ver calificaciones de tus propias tareas'
+        });
+      }
 
-      const grades = await Grade.findByCourse(cursoId, filters);
+      const grades = await Grade.findByTask(taskId);
 
       // Enriquecer con información de estudiantes
       const enrichedGrades = await Promise.all(
@@ -223,7 +220,83 @@ class GradeController {
         success: true,
         data: enrichedGrades,
         count: enrichedGrades.length,
-        filters: filters
+        task: {
+          id: task.id,
+          titulo: task.titulo,
+          descripcion: task.descripcion,
+          tipo: task.tipo
+        }
+      });
+
+    } catch (error) {
+      console.error('Error obteniendo calificaciones de la tarea:', error);
+      res.status(500).json({
+        error: 'InternalServerError',
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
+  // Obtener calificaciones de un curso (profesores del curso y admin)
+  static async getCourseGrades(req, res) {
+    try {
+      const { cursoId } = req.params;
+      const { estudianteCedula, tipo } = req.query;
+
+      // Verificar permisos para profesores
+      if (req.user.rol === 'profesor') {
+        const course = await Course.findById(cursoId);
+        
+        if (!course) {
+          return res.status(404).json({
+            error: 'NotFound',
+            message: 'Curso no encontrado'
+          });
+        }
+
+        if (course.docenteAsignado !== req.user.cedula) {
+          return res.status(403).json({
+            error: 'Forbidden',
+            message: 'Solo puedes ver calificaciones de tus cursos asignados'
+          });
+        }
+      }
+
+      // Obtener calificaciones del curso
+      const grades = await Grade.findByCourse(cursoId, tipo);
+
+      // Filtrar por estudiante si se especifica
+      let filteredGrades = grades;
+      if (estudianteCedula) {
+        filteredGrades = grades.filter(grade => grade.estudianteCedula === estudianteCedula);
+      }
+
+      // Enriquecer con información de estudiantes
+      const enrichedGrades = await Promise.all(
+        filteredGrades.map(async (grade) => {
+          const student = await User.findByCedula(grade.estudianteCedula);
+
+          return {
+            ...grade,
+            estudiante: student ? {
+              cedula: student.cedula,
+              nombre: student.nombre,
+              apellido: student.apellido,
+              email: student.email
+            } : null
+          };
+        })
+      );
+
+      res.json({
+        success: true,
+        data: enrichedGrades,
+        count: enrichedGrades.length,
+        filters: {
+          cursoId,
+          estudianteCedula: estudianteCedula || null,
+          tipo: tipo || null
+        }
       });
 
     } catch (error) {
@@ -270,7 +343,19 @@ class GradeController {
         });
       }
 
-      const updatedGrade = await Grade.update(id, updateData);
+      // Convertir datos si es necesario
+      if (updateData.nota !== undefined) {
+        updateData.nota = parseFloat(updateData.nota);
+      }
+      if (updateData.peso !== undefined) {
+        updateData.peso = parseFloat(updateData.peso);
+      }
+      if (updateData.fechaEvaluacion) {
+        updateData.fechaEvaluacion = new Date(updateData.fechaEvaluacion);
+      }
+
+      const profesorCedula = req.user.rol === 'administrador' ? null : req.user.cedula;
+      const updatedGrade = await Grade.update(id, updateData, profesorCedula);
 
       res.json({
         success: true,
@@ -302,12 +387,16 @@ class GradeController {
     }
   }
 
-  // Eliminar calificación (solo admin)
+  // Eliminar calificación (admin y profesor que la creó)
   static async deleteGrade(req, res) {
     try {
       const { id } = req.params;
 
-      const result = await Grade.delete(id);
+      // Para administradores, eliminar directamente
+      // Para profesores, verificar que sean el autor de la calificación
+      const profesorCedula = req.user.rol === 'administrador' ? null : req.user.cedula;
+      
+      const result = await Grade.delete(id, profesorCedula);
 
       res.json({
         success: true,
@@ -317,9 +406,16 @@ class GradeController {
     } catch (error) {
       console.error('Error eliminando calificación:', error);
 
-      if (error.message.includes('no encontrada')) {
+      if (error.message.includes('no encontrada') || error.message.includes('no encontrado')) {
         return res.status(404).json({
           error: 'NotFound',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('Solo el profesor')) {
+        return res.status(403).json({
+          error: 'Forbidden',
           message: error.message
         });
       }
@@ -386,8 +482,8 @@ class GradeController {
       const {
         estudianteCedula,
         cursoId,
-        docenteCedula,
-        tipoEvaluacion,
+        profesorCedula,
+        tipo,
         page = 1,
         limit = 20
       } = req.query;
@@ -396,10 +492,10 @@ class GradeController {
       const filters = {};
       if (estudianteCedula) filters.estudianteCedula = estudianteCedula;
       if (cursoId) filters.cursoId = cursoId;
-      if (docenteCedula) filters.docenteCedula = docenteCedula;
-      if (tipoEvaluacion) filters.tipoEvaluacion = tipoEvaluacion;
+      if (profesorCedula) filters.profesorCedula = profesorCedula;
+      if (tipo) filters.tipo = tipo;
 
-      const grades = await Grade.findWithDetails(filters);
+      const grades = await Grade.getDetailedReport(filters);
 
       // Paginación
       const startIndex = (page - 1) * limit;

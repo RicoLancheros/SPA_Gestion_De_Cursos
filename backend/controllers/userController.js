@@ -359,6 +359,88 @@ class UserController {
     }
   }
 
+  // Obtener estudiantes inscritos en los cursos de un profesor específico
+  static async getTeacherStudents(req, res) {
+    try {
+      const { cedula } = req.params;
+
+      // Verificar permisos: admin puede ver cualquier profesor, profesor solo sus propios estudiantes
+      if (req.user.rol === 'profesor' && req.user.cedula !== cedula) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Solo puedes ver tus propios estudiantes'
+        });
+      }
+
+      // Importar dependencias necesarias
+      const Course = (await import('../models/Course.js')).default;
+      const Enrollment = (await import('../models/Enrollment.js')).default;
+
+      // Obtener cursos del profesor
+      const courses = await Course.findAll({ docenteAsignado: cedula });
+
+      if (courses.length === 0) {
+        return res.json({
+          success: true,
+          data: [],
+          count: 0,
+          message: 'El profesor no tiene cursos asignados'
+        });
+      }
+
+      // Obtener todas las inscripciones activas de estos cursos
+      const courseIds = courses.map(course => course.id);
+      const allEnrollments = [];
+
+      for (const courseId of courseIds) {
+        const enrollments = await Enrollment.findByCourse(courseId, 'activo');
+        allEnrollments.push(...enrollments);
+      }
+
+      // Obtener estudiantes únicos (sin duplicados)
+      const studentCedulas = [...new Set(allEnrollments.map(e => e.estudianteCedula))];
+
+      // Obtener información completa de los estudiantes
+      const students = [];
+      for (const studentCedula of studentCedulas) {
+        const student = await User.findByCedula(studentCedula);
+        if (student && student.rol === 'estudiante' && student.estado === 'activo') {
+          // Agregar información de cursos en los que está inscrito
+          const studentCourses = courses.filter(course => 
+            allEnrollments.some(e => e.estudianteCedula === studentCedula && e.cursoId === course.id)
+          );
+
+          students.push({
+            ...student,
+            cursosInscritos: studentCourses.map(course => ({
+              id: course.id,
+              nombre: course.nombre,
+              carrera: course.carrera
+            }))
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: students,
+        count: students.length,
+        teacherInfo: {
+          cedula,
+          totalCourses: courses.length,
+          courseNames: courses.map(c => c.nombre)
+        }
+      });
+
+    } catch (error) {
+      console.error('Error obteniendo estudiantes del profesor:', error);
+      res.status(500).json({
+        error: 'InternalServerError',
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
   // Estadísticas de usuarios (solo admin)
   static async getUserStats(req, res) {
     try {

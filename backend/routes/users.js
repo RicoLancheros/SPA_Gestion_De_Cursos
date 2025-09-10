@@ -19,6 +19,9 @@ router.get('/teachers', AuthMiddleware.requireAdminOrTeacher, UserController.get
 // Obtener estudiantes (admin y profesores)
 router.get('/students', AuthMiddleware.requireAdminOrTeacher, UserController.getStudents);
 
+// Obtener estudiantes de los cursos de un profesor específico (solo profesores)
+router.get('/teacher/:cedula/students', AuthMiddleware.requireAdminOrTeacher, UserController.getTeacherStudents);
+
 // Estadísticas de usuarios (solo admin)
 router.get('/stats', AuthMiddleware.requireAdmin, UserController.getUserStats);
 

@@ -53,6 +53,7 @@ import userRoutes from './routes/users.js';
 import courseRoutes from './routes/courses.js';
 import enrollmentRoutes from './routes/enrollments.js';
 import gradeRoutes from './routes/grades.js';
+import taskRoutes from './routes/tasks.js';
 
 // Usar rutas
 app.use('/api/auth', authRoutes);
@@ -60,6 +61,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/grades', gradeRoutes);
+app.use('/api/tasks', taskRoutes);
 
 // Manejo de errores 404
 app.use((req, res, next) => {

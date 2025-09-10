@@ -48,7 +48,10 @@ import {
   CheckCircle,
   Block,
   Assignment,
-  Visibility
+  Visibility,
+  CalendarToday,
+  AccessTime,
+  Place
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import CourseService from '../../services/courseService';
@@ -89,7 +92,9 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
     fechaFin: '',
     modalidad: 'presencial',
     estado: 'inscripciones',
-    salonOLink: '',
+    salon: '', // Para presencial y mixta
+    linkVirtual: '', // Para virtual y mixta
+    salonOLink: '', // Campo combinado para compatibilidad con backend
     objetivos: '',
     horarios: [{ dia: '', horaInicio: '', horaFin: '' }] // Array de horarios múltiples
   });
@@ -250,6 +255,8 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
         fechaFin: '',
         modalidad: 'presencial',
         estado: 'inscripciones',
+        salon: '',
+        linkVirtual: '',
         salonOLink: '',
         objetivos: '',
         horarios: [{ dia: '', horaInicio: '', horaFin: '' }]
@@ -270,6 +277,16 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
         fechaFin: course.fechaFin ? (course.fechaFin._seconds ? new Date(course.fechaFin._seconds * 1000).toISOString().split('T')[0] : course.fechaFin.split('T')[0]) : '',
         modalidad: course.modalidad || 'presencial',
         estado: course.estado || 'inscripciones',
+        salon: course.modalidad === 'presencial' || course.modalidad === 'mixta' 
+          ? (course.salonOLink && course.salonOLink.includes('Salón:') 
+              ? course.salonOLink.split('|')[0].replace('Salón:', '').trim()
+              : course.modalidad === 'presencial' ? course.salonOLink || '' : '')
+          : '',
+        linkVirtual: course.modalidad === 'virtual' || course.modalidad === 'mixta'
+          ? (course.salonOLink && course.salonOLink.includes('Link:')
+              ? course.salonOLink.split('|')[1]?.replace('Link:', '').trim() || ''
+              : course.modalidad === 'virtual' ? course.salonOLink || '' : '')
+          : '',
         salonOLink: course.salonOLink || '',
         objetivos: course.objetivos || '',
         horarios: horariosExistentes
@@ -293,6 +310,8 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
       fechaFin: '',
       modalidad: 'presencial',
       estado: 'inscripciones',
+      salon: '',
+      linkVirtual: '',
       salonOLink: '',
       horarios: [{ dia: '', horaInicio: '', horaFin: '' }],
       objetivos: ''
@@ -315,6 +334,31 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
     }
   };
 
+  // Función para combinar salón y link según modalidad
+  const combinarSalonYLink = () => {
+    const modalidad = formData.modalidad;
+    
+    if (modalidad === 'presencial') {
+      return formData.salon.trim();
+    } else if (modalidad === 'virtual') {
+      return formData.linkVirtual.trim();
+    } else if (modalidad === 'mixta') {
+      const salon = formData.salon.trim();
+      const link = formData.linkVirtual.trim();
+      
+      // Para modalidad mixta, combinamos ambos separados por " | "
+      if (salon && link) {
+        return `Salón: ${salon} | Link: ${link}`;
+      } else if (salon) {
+        return `Salón: ${salon}`;
+      } else if (link) {
+        return `Link: ${link}`;
+      }
+    }
+    
+    return '';
+  };
+
   const validateForm = () => {
     const errors = {};
     
@@ -327,8 +371,22 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
       errors.capacidadMaxima = 'La capacidad máxima debe ser mayor a 0';
     }
     
-    if (!formData.salonOLink.trim()) {
-      errors.salonOLink = formData.modalidad === 'presencial' ? 'El salón es requerido' : 'El link virtual es requerido';
+    // Validar campos según modalidad
+    if (formData.modalidad === 'presencial') {
+      if (!formData.salon.trim()) {
+        errors.salon = 'El salón es requerido para modalidad presencial';
+      }
+    } else if (formData.modalidad === 'virtual') {
+      if (!formData.linkVirtual.trim()) {
+        errors.linkVirtual = 'El link virtual es requerido para modalidad virtual';
+      }
+    } else if (formData.modalidad === 'mixta') {
+      if (!formData.salon.trim()) {
+        errors.salon = 'El salón es requerido para modalidad mixta';
+      }
+      if (!formData.linkVirtual.trim()) {
+        errors.linkVirtual = 'El link virtual es requerido para modalidad mixta';
+      }
     }
     
     if (!formData.fechaInicio) {
@@ -363,13 +421,13 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
 
       const courseData = {
         nombre: formData.nombre,
-        descripcion: formData.descripcion,
+        descripcion: formData.objetivos || 'Sin descripción',
         carrera: formData.categoria,
         modalidad: formData.modalidad,
         estado: formData.estado,
         capacidadMaxima: parseInt(formData.capacidadMaxima),
-        docenteAsignado: formData.docenteCedula,
-        salonOLink: formData.salonOLink,
+        docenteAsignado: formData.docenteCedula || '',
+        salonOLink: combinarSalonYLink(),
         duracionClase: 120,
         duracionTotal: 40, // Valor por defecto, se puede calcular automáticamente basado en horarios
         horarios: horarios,
@@ -607,27 +665,64 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
       {studentMode ? (
         // Card view for students
         <>
-          <Grid container spacing={3} sx={{ width: '100%', overflow: 'hidden', mb: 4 }}>
+          <Box 
+            sx={{ 
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',                           // Móvil: 1 columna
+                sm: 'repeat(2, 1fr)',                // Tablet: 2 columnas
+                md: 'repeat(3, 1fr)',                // Desktop: 3 columnas  
+                lg: 'repeat(auto-fit, minmax(350px, 1fr))'  // Adaptativo con mínimo 350px
+              },
+              gap: 3,
+              mb: 4,
+              width: '100%',
+              justifyItems: 'center',               // Centrar los items en su grid area
+              px: { xs: 1, sm: 2 }                 // Padding horizontal responsivo
+            }}
+          >
             {filteredCourses
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
               .map((course) => (
-                <Grid item xs={12} sm={6} md={4} key={course.id} sx={{ maxWidth: { xs: '100%', sm: '50%', md: '33.333%' }, minWidth: 0 }}>
-                  <Card sx={{ 
+                <Card 
+                  key={course.id}
+                  sx={{ 
                     height: '100%', 
                     display: 'flex', 
                     flexDirection: 'column', 
-                    borderRadius: 0,
+                    borderRadius: 2,
                     width: '100%',
-                    maxWidth: '100%',
-                    overflow: 'hidden'
+                    maxWidth: 420,
+                    minHeight: 520,
+                    boxShadow: 2,
+                    transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4,
+                    }
                   }}>
                     <CardContent sx={{ 
                       flexGrow: 1,
-                      width: '100%',
-                      maxWidth: '100%',
-                      overflow: 'hidden'
+                      display: 'flex',
+                      flexDirection: 'column',
+                      p: 2.5,
+                      minHeight: 420
                     }}>
-                      <Typography variant="h6" gutterBottom>
+                      {/* Título - altura fija */}
+                      <Typography 
+                        variant="h6" 
+                        gutterBottom
+                        sx={{ 
+                          minHeight: '3.2em',
+                          display: '-webkit-box',
+                          '-webkit-line-clamp': 2,
+                          '-webkit-box-orient': 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.6,
+                          fontWeight: 600
+                        }}
+                      >
                         {course.nombre}
                       </Typography>
                       
@@ -635,20 +730,19 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
                         ID: {course.id.substring(0, 6).toUpperCase()}
                       </Typography>
                       
+                      {/* Descripción - altura fija */}
                       <Typography 
                         variant="body2" 
                         sx={{ 
                           mb: 2,
-                          wordBreak: 'break-word',
-                          overflowWrap: 'break-word',
-                          hyphens: 'auto',
-                          lineHeight: 1.4,
-                          maxHeight: '4.2em',
+                          minHeight: '4.5em',
+                          display: '-webkit-box',
+                          '-webkit-line-clamp': 3,
+                          '-webkit-box-orient': 'vertical',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          display: 'block',
-                          width: '100%',
-                          boxSizing: 'border-box'
+                          lineHeight: 1.5,
+                          color: 'text.secondary'
                         }}
                       >
                         {course.objetivos || course.descripcion || 'Sin descripción disponible'}
@@ -656,7 +750,7 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
                       
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                         <Chip 
-                          label={course.categoria} 
+                          label={course.carrera || course.categoria} 
                           size="small" 
                           color="primary" 
                           variant="outlined"
@@ -665,55 +759,79 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
                           label={course.modalidad?.toUpperCase()} 
                           size="small" 
                           color={getModalityColor(course.modalidad)}
+                          variant="outlined"
+                        />
+                        <Chip 
+                          label={course.estado === 'inscripciones' ? 'ABIERTO' : course.estado?.toUpperCase()} 
+                          size="small" 
+                          color={course.estado === 'inscripciones' ? 'success' : 'default'}
+                          variant="outlined"
                         />
                       </Box>
                       
-                      {/* Días de clases */}
+                      {/* Horarios detallados */}
                       {course.horarios && course.horarios.length > 0 && course.horarios.some(h => h.dia) && (
                         <Box sx={{ mb: 2 }}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                            Días de clases:
+                            Horarios:
                           </Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                             {course.horarios
-                              .filter(horario => horario.dia)
+                              .filter(horario => horario.dia && horario.horaInicio && horario.horaFin)
                               .map((horario, index) => (
-                                <Chip
-                                  key={index}
-                                  label={horario.dia}
-                                  size="small"
-                                  variant="outlined"
-                                  sx={{
-                                    fontSize: '0.7rem',
-                                    height: '20px',
-                                    backgroundColor: (theme) => theme.palette.mode === 'dark' 
-                                      ? 'rgba(144, 202, 249, 0.15)' 
-                                      : '#f0f8ff',
-                                    borderColor: (theme) => theme.palette.mode === 'dark'
-                                      ? 'rgba(144, 202, 249, 0.6)'
-                                      : '#90caf9',
-                                    color: (theme) => theme.palette.mode === 'dark'
-                                      ? '#90caf9'
-                                      : 'inherit'
-                                  }}
-                                />
+                                <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <AccessTime fontSize="small" sx={{ fontSize: '14px' }} />
+                                  <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                                    {horario.dia}: {horario.horaInicio} - {horario.horaFin}
+                                  </Typography>
+                                </Box>
                               ))
                             }
                           </Box>
+                        </Box>
+                      )}
+
+
+                      {/* Fechas del curso */}
+                      {course.fechaInicio && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <CalendarToday fontSize="small" />
+                          <Typography variant="body2">
+                            Inicio: {course.fechaInicio._seconds ? 
+                              new Date(course.fechaInicio._seconds * 1000).toLocaleDateString('es-ES') : 
+                              new Date(course.fechaInicio).toLocaleDateString('es-ES')
+                            }
+                            {course.fechaFin && (
+                              ` - Fin: ${course.fechaFin._seconds ? 
+                                new Date(course.fechaFin._seconds * 1000).toLocaleDateString('es-ES') : 
+                                new Date(course.fechaFin).toLocaleDateString('es-ES')
+                              }`
+                            )}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {/* Lugar del curso */}
+                      {course.salonOLink && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <Place fontSize="small" />
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
+                            {course.salonOLink}
+                          </Typography>
                         </Box>
                       )}
                       
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                         <Person fontSize="small" />
                         <Typography variant="body2">
-                          {course.docenteNombre || 'Sin profesor asignado'}
+                          {course.docente ? `${course.docente.nombre} ${course.docente.apellido}` : 'Sin profesor asignado'}
                         </Typography>
                       </Box>
                       
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                         <Group fontSize="small" />
                         <Typography variant="body2">
-                          Capacidad: {course.inscritosActuales || 0}/{course.capacidadMaxima}
+                          Cupos: {course.cuposDisponibles || 0} disponibles de {course.capacidadMaxima}
                         </Typography>
                       </Box>
                       
@@ -727,30 +845,57 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
                       )}
                     </CardContent>
                     
-                    <CardActions sx={{ pt: 0 }}>
+                    <CardActions sx={{ 
+                      pt: 1, 
+                      pb: 2, 
+                      px: 2.5,
+                      justifyContent: 'space-between',
+                      mt: 'auto' 
+                    }}>
                       <Button
                         size="small"
                         onClick={() => handleOpenDialog('view', course)}
-                        sx={{ borderRadius: 0 }}
+                        sx={{ 
+                          borderRadius: 1,
+                          textTransform: 'none'
+                        }}
+                        startIcon={<Visibility />}
                       >
                         Ver Detalles
                       </Button>
                       
-                      {course.activo && (course.inscritosActuales || 0) < course.capacidadMaxima && (
+                      {course.estado === 'inscripciones' && (course.estudiantesInscritos || 0) < course.capacidadMaxima ? (
                         <Button
                           size="small"
                           variant="contained"
+                          color="success"
                           onClick={() => handleEnrollInCourse(course.id)}
-                          sx={{ borderRadius: 0 }}
+                          sx={{ 
+                            borderRadius: 1,
+                            fontWeight: 'bold',
+                            textTransform: 'none'
+                          }}
+                          startIcon={<Add />}
                         >
                           Inscribirse
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled
+                          sx={{ 
+                            borderRadius: 1,
+                            textTransform: 'none'
+                          }}
+                        >
+                          {course.estado !== 'inscripciones' ? 'No disponible' : 'Sin cupos'}
                         </Button>
                       )}
                     </CardActions>
                   </Card>
-                </Grid>
               ))}
-          </Grid>
+          </Box>
           
           {filteredCourses.length === 0 && (
             <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 0 }}>
@@ -1010,7 +1155,184 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
         </DialogTitle>
         
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          {dialogMode === 'view' ? (
+            /* Vista de detalles - información distribuida verticalmente */
+            <Box sx={{ pt: 2, pb: 1 }}>
+              {/* Título del curso */}
+              <Typography 
+                variant="h4" 
+                gutterBottom
+                sx={{ 
+                  fontWeight: 600,
+                  mb: 1,
+                  color: 'primary.main',
+                  textAlign: 'center'
+                }}
+              >
+                {selectedCourse?.nombre}
+              </Typography>
+              
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 3, textAlign: 'center', fontFamily: 'monospace' }}>
+                ID: {selectedCourse?.id?.substring(0, 8).toUpperCase()}
+              </Typography>
+              
+              {/* Descripción */}
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  mb: 4,
+                  lineHeight: 1.8,
+                  color: 'text.primary',
+                  fontStyle: 'italic',
+                  textAlign: 'center',
+                  fontSize: '1.1rem'
+                }}
+              >
+                {selectedCourse?.objetivos || selectedCourse?.descripcion || 'Sin descripción disponible'}
+              </Typography>
+              
+              {/* Chips de información */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 4, justifyContent: 'center' }}>
+                <Chip 
+                  label={selectedCourse?.carrera || selectedCourse?.categoria} 
+                  size="medium" 
+                  color="primary" 
+                  variant="filled"
+                />
+                <Chip 
+                  label={selectedCourse?.modalidad?.toUpperCase()} 
+                  size="medium" 
+                  color="info"
+                  variant="filled"
+                />
+                <Chip 
+                  label={selectedCourse?.estado === 'inscripciones' ? 'ABIERTO' : selectedCourse?.estado?.toUpperCase()} 
+                  size="medium" 
+                  color={selectedCourse?.estado === 'inscripciones' ? 'success' : 'default'}
+                  variant="filled"
+                />
+              </Box>
+
+              {/* Información organizada en secciones */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 600, mx: 'auto' }}>
+                
+                {/* Horarios */}
+                {selectedCourse?.horarios && selectedCourse.horarios.length > 0 && selectedCourse.horarios.some(h => h.dia) && (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2 }}>
+                      <Schedule />
+                      Horarios
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {selectedCourse.horarios
+                        .filter(horario => horario.dia && horario.horaInicio && horario.horaFin)
+                        .map((horario, index) => (
+                          <Box key={index} sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            gap: 1,
+                            p: 2,
+                            backgroundColor: 'primary.main',
+                            color: 'white',
+                            borderRadius: 2
+                          }}>
+                            <AccessTime />
+                            <Typography variant="h6" fontWeight="medium">
+                              {horario.dia}: {horario.horaInicio} - {horario.horaFin}
+                            </Typography>
+                          </Box>
+                        ))
+                      }
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Fechas del curso */}
+                {(selectedCourse?.fechaInicio || selectedCourse?.fechaFin) && (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 1 }}>
+                      <CalendarToday />
+                      <Typography variant="h6">Fechas del Curso</Typography>
+                    </Box>
+                    <Typography variant="body1" sx={{ fontSize: '1.1rem' }}>
+                      <strong>Inicio:</strong> {selectedCourse?.fechaInicio ? (
+                        selectedCourse.fechaInicio._seconds ? 
+                          new Date(selectedCourse.fechaInicio._seconds * 1000).toLocaleDateString('es-ES') : 
+                          new Date(selectedCourse.fechaInicio).toLocaleDateString('es-ES')
+                      ) : 'No especificado'}
+                    </Typography>
+                    {selectedCourse?.fechaFin && (
+                      <Typography variant="body1" sx={{ fontSize: '1.1rem' }}>
+                        <strong>Fin:</strong> {selectedCourse.fechaFin._seconds ? 
+                          new Date(selectedCourse.fechaFin._seconds * 1000).toLocaleDateString('es-ES') : 
+                          new Date(selectedCourse.fechaFin).toLocaleDateString('es-ES')
+                        }
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
+                {/* Ubicación */}
+                {selectedCourse?.salonOLink && (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 1 }}>
+                      <Place />
+                      <Typography variant="h6">Ubicación</Typography>
+                    </Box>
+                    <Typography variant="body1" sx={{ fontSize: '1.1rem', wordBreak: 'break-word' }}>
+                      {selectedCourse.salonOLink}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Profesor */}
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 1 }}>
+                    <Person />
+                    <Typography variant="h6">Profesor</Typography>
+                  </Box>
+                  <Typography variant="body1" sx={{ fontSize: '1.1rem' }}>
+                    {selectedCourse?.docente ? 
+                      `${selectedCourse.docente.nombre} ${selectedCourse.docente.apellido}` : 
+                      'Sin profesor asignado'
+                    }
+                  </Typography>
+                </Box>
+
+                {/* Información de cupos */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                      <Group />
+                      <Typography variant="h6">Cupos Disponibles</Typography>
+                    </Box>
+                    <Typography variant="h5" color="success.main" fontWeight="bold">
+                      {selectedCourse?.cuposDisponibles || (selectedCourse?.capacidadMaxima - (selectedCourse?.estudiantesInscritos || 0))}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      de {selectedCourse?.capacidadMaxima} totales
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                      <Assignment />
+                      <Typography variant="h6">Estudiantes Inscritos</Typography>
+                    </Box>
+                    <Typography variant="h5" color="primary.main" fontWeight="bold">
+                      {selectedCourse?.estudiantesInscritos || 0}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      estudiantes
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          ) : (
+            /* Vista de formulario para crear/editar */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Fila 1: Nombre del Curso */}
             <TextField
               name="nombre"
@@ -1176,16 +1498,33 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
                 </Box>
               ))}
               
-              <TextField
-                name="salonOLink"
-                label={formData.modalidad === 'presencial' ? 'Salón/Aula' : 'Link Virtual'}
-                value={formData.salonOLink}
-                onChange={handleInputChange}
-                disabled={dialogMode === 'view'}
-                error={!!formErrors.salonOLink}
-                helperText={formErrors.salonOLink}
-                sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-              />
+              {/* Campos específicos por modalidad */}
+              {(formData.modalidad === 'presencial' || formData.modalidad === 'mixta') && (
+                <TextField
+                  name="salon"
+                  label="Salón/Aula"
+                  value={formData.salon}
+                  onChange={handleInputChange}
+                  disabled={dialogMode === 'view'}
+                  error={!!formErrors.salon}
+                  helperText={formErrors.salon}
+                  sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                />
+              )}
+              
+              {(formData.modalidad === 'virtual' || formData.modalidad === 'mixta') && (
+                <TextField
+                  name="linkVirtual"
+                  label="Link Virtual"
+                  value={formData.linkVirtual}
+                  onChange={handleInputChange}
+                  disabled={dialogMode === 'view'}
+                  error={!!formErrors.linkVirtual}
+                  helperText={formErrors.linkVirtual}
+                  placeholder="https://meet.google.com/..."
+                  sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                />
+              )}
             </Box>
             
             {/* Fila 5: Fechas */}
@@ -1229,7 +1568,8 @@ const CoursesPage = ({ teacherMode = false, studentMode = false }) => {
               fullWidth
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
             />
-          </Box>
+            </Box>
+          )}
         </DialogContent>
         
         <DialogActions>

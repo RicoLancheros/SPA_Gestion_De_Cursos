@@ -211,7 +211,7 @@ El proyecto sigue una arquitectura MVC (Model-View-Controller) con separación c
   🎓 ESTUDIANTES
 
   Estudiante 1:
-  - Cédula: SSSSSS
+  - Cédula: 1001001001
   - Contraseña: estudiante123
   - Nombre: Juan Pérez
   - Email: juan.perez@estudiante.com

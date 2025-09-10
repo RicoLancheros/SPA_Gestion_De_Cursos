@@ -27,6 +27,12 @@ class UserService {
     return response.data;
   }
 
+  // Obtener estudiantes de los cursos de un profesor (solo para profesores)
+  static async getTeacherStudents(teacherCedula) {
+    const response = await apiClient.get(`/users/teacher/${teacherCedula}/students`);
+    return response.data;
+  }
+
   // Obtener estadísticas de usuarios (admin)
   static async getUserStats() {
     const response = await apiClient.get('/users/stats');

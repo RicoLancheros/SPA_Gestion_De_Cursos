@@ -232,6 +232,35 @@ const UsersPage = ({ teacherMode = false }) => {
     }
   };
 
+  // Función para verificar duplicados en tiempo real
+  const handleEmailBlur = () => {
+    if (formData.email && dialogMode === 'create') {
+      const emailExists = users.some(user => 
+        user.email.toLowerCase() === formData.email.toLowerCase()
+      );
+      
+      if (emailExists) {
+        setFormErrors(prev => ({
+          ...prev,
+          email: 'Este email ya está registrado. Por favor, usa otro email.'
+        }));
+      }
+    }
+  };
+
+  const handleCedulaBlur = () => {
+    if (formData.cedula && dialogMode === 'create') {
+      const cedulaExists = users.some(user => user.cedula === formData.cedula);
+      
+      if (cedulaExists) {
+        setFormErrors(prev => ({
+          ...prev,
+          cedula: 'Esta cédula ya está registrada. Por favor, verifica el número.'
+        }));
+      }
+    }
+  };
+
   const validateForm = () => {
     const errors = {};
     
@@ -253,6 +282,12 @@ const UsersPage = ({ teacherMode = false }) => {
       errors.email = 'El email es requerido';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'El email no es válido';
+    }
+    
+    if (!formData.telefono.trim()) {
+      errors.telefono = 'El teléfono es requerido';
+    } else if (!/^\d{10}$/.test(formData.telefono.trim().replace(/\D/g, ''))) {
+      errors.telefono = 'El teléfono debe tener 10 dígitos';
     }
     
     if (dialogMode === 'create' && !formData.password) {
@@ -298,7 +333,31 @@ const UsersPage = ({ teacherMode = false }) => {
       }
     } catch (err) {
       console.error('Error saving user:', err);
-      toast.error(err.message || 'Error al guardar usuario');
+      
+      // Extraer mensaje de error específico del servidor
+      let errorMessage = 'Error al guardar usuario';
+      
+      if (err.response && err.response.data && err.response.data.message) {
+        // El servidor envía el mensaje específico
+        errorMessage = err.response.data.message;
+        
+        // Agregar sugerencias específicas para cada tipo de conflicto
+        if (errorMessage.includes('email')) {
+          errorMessage += '. Por favor, usa un email diferente.';
+        } else if (errorMessage.includes('cédula')) {
+          errorMessage += '. Por favor, verifica la cédula ingresada.';
+        }
+      } else if (err.response && err.response.status === 409) {
+        // Error 409 sin mensaje específico
+        errorMessage = 'Ya existe un usuario con esa cédula o email. Por favor, verifica los datos e intenta con información diferente.';
+      } else if (err.response && err.response.status === 400) {
+        // Error 400 sin mensaje específico
+        errorMessage = 'Datos inválidos. Por favor, verifica que todos los campos estén correctos y completos.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -406,6 +465,58 @@ const UsersPage = ({ teacherMode = false }) => {
         </Alert>
       )}
 
+      {/* Teacher Info Card - Solo para profesores */}
+      {teacherMode && users.length > 0 && users[0] && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 0, bgcolor: 'primary.main', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              bgcolor: 'rgba(255,255,255,0.2)'
+            }}>
+              <People sx={{ color: 'white' }} />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Estudiantes en tus Cursos
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                {users[0].teacherInfo ? (
+                  <>
+                    {users[0].teacherInfo.totalCourses} curso(s) asignado(s) • {users.length} estudiante(s) inscrito(s)
+                  </>
+                ) : (
+                  `${users.length} estudiante(s) inscrito(s) en tus cursos`
+                )}
+              </Typography>
+              {users[0].teacherInfo?.courseNames && (
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {users[0].teacherInfo.courseNames.map((courseName, index) => (
+                    <Typography 
+                      key={index}
+                      variant="caption" 
+                      sx={{ 
+                        bgcolor: 'rgba(255,255,255,0.2)', 
+                        px: 1, 
+                        py: 0.5, 
+                        borderRadius: 1,
+                        fontSize: '0.75rem'
+                      }}
+                    >
+                      {courseName}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </Paper>
+      )}
+
       {/* Filters */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 0 }}>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -463,8 +574,9 @@ const UsersPage = ({ teacherMode = false }) => {
                 <TableCell>Cédula</TableCell>
                 <TableCell>Nombre Completo</TableCell>
                 <TableCell>Email</TableCell>
-                <TableCell>Rol</TableCell>
+                {!teacherMode && <TableCell>Rol</TableCell>}
                 <TableCell>Estado</TableCell>
+                {teacherMode && <TableCell>Cursos Inscritos</TableCell>}
                 <TableCell>Fecha Registro</TableCell>
                 {isAdmin && <TableCell align="center">Acciones</TableCell>}
               </TableRow>
@@ -477,13 +589,15 @@ const UsersPage = ({ teacherMode = false }) => {
                     <TableCell>{userItem.cedula}</TableCell>
                     <TableCell>{`${userItem.nombre} ${userItem.apellido}`}</TableCell>
                     <TableCell>{userItem.email}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={userItem.rol?.toUpperCase()}
-                        color={getRoleColor(userItem.rol)}
-                        size="small"
-                      />
-                    </TableCell>
+                    {!teacherMode && (
+                      <TableCell>
+                        <Chip
+                          label={userItem.rol?.toUpperCase()}
+                          color={getRoleColor(userItem.rol)}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Chip
                         label={userItem.activo ? 'Activo' : 'Inactivo'}
@@ -491,6 +605,34 @@ const UsersPage = ({ teacherMode = false }) => {
                         size="small"
                       />
                     </TableCell>
+                    {teacherMode && (
+                      <TableCell>
+                        {userItem.cursosInscritos && userItem.cursosInscritos.length > 0 ? (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {userItem.cursosInscritos.map((curso, index) => (
+                              <Chip
+                                key={index}
+                                label={curso.nombre}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                sx={{ 
+                                  fontSize: '0.75rem',
+                                  height: '24px',
+                                  '& .MuiChip-label': {
+                                    padding: '0 6px'
+                                  }
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                            Sin cursos
+                          </Typography>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {userItem.fechaCreacion 
                         ? new Date(userItem.fechaCreacion._seconds * 1000).toLocaleDateString()
@@ -512,9 +654,13 @@ const UsersPage = ({ teacherMode = false }) => {
               
               {filteredUsers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={isAdmin ? 7 : 6} align="center" sx={{ py: 4 }}>
+                  <TableCell 
+                    colSpan={teacherMode ? (isAdmin ? 7 : 6) : (isAdmin ? 7 : 6)} 
+                    align="center" 
+                    sx={{ py: 4 }}
+                  >
                     <Typography variant="body1" color="text.secondary">
-                      No se encontraron usuarios
+                      {teacherMode ? 'No tienes estudiantes inscritos en tus cursos' : 'No se encontraron usuarios'}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -597,6 +743,7 @@ const UsersPage = ({ teacherMode = false }) => {
               label="Cédula"
               value={formData.cedula}
               onChange={handleInputChange}
+              onBlur={handleCedulaBlur}
               error={!!formErrors.cedula}
               helperText={formErrors.cedula}
               disabled={dialogMode === 'edit'}
@@ -634,6 +781,7 @@ const UsersPage = ({ teacherMode = false }) => {
               type="email"
               value={formData.email}
               onChange={handleInputChange}
+              onBlur={handleEmailBlur}
               error={!!formErrors.email}
               helperText={formErrors.email}
               fullWidth

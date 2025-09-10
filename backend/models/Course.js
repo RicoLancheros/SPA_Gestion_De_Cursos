@@ -80,10 +80,8 @@ class Course {
       errors.push('La duración total debe ser un número positivo (horas)');
     }
 
-    // Validar docente asignado (requerido)
-    if (!courseData.docenteAsignado || courseData.docenteAsignado.trim() === '') {
-      errors.push('El docente asignado es requerido');
-    }
+    // Validar docente asignado (opcional, pero si se proporciona debe existir)
+    // El docente se puede asignar después de crear el curso
 
     // Validar fechas si se proporcionan
     if (courseData.fechaInicio && courseData.fechaFin) {
@@ -129,14 +127,16 @@ class Course {
         throw new Error(`Datos inválidos: ${validation.errors.join(', ')}`);
       }
 
-      // Verificar que el docente existe y tiene rol de profesor
-      const User = (await import('./User.js')).default;
-      const docente = await User.findByCedula(courseData.docenteAsignado);
-      if (!docente) {
-        throw new Error('El docente asignado no existe');
-      }
-      if (docente.rol !== 'profesor') {
-        throw new Error('El usuario asignado no tiene rol de profesor');
+      // Verificar que el docente existe y tiene rol de profesor (solo si se asigna un docente)
+      if (courseData.docenteAsignado && courseData.docenteAsignado.trim() !== '') {
+        const User = (await import('./User.js')).default;
+        const docente = await User.findByCedula(courseData.docenteAsignado);
+        if (!docente) {
+          throw new Error('El docente asignado no existe');
+        }
+        if (docente.rol !== 'profesor') {
+          throw new Error('El usuario asignado no tiene rol de profesor');
+        }
       }
 
       // Crear objeto curso
@@ -158,7 +158,7 @@ class Course {
         salonOLink: newCourse.salonOLink,
         duracionClase: newCourse.duracionClase,
         duracionTotal: newCourse.duracionTotal,
-        docenteAsignado: newCourse.docenteAsignado,
+        docenteAsignado: newCourse.docenteAsignado || null,
         estado: newCourse.estado,
         fechaCreacion: newCourse.fechaCreacion,
         fechaInicio: newCourse.fechaInicio || null,

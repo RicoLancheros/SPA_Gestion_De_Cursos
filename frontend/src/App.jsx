@@ -26,6 +26,8 @@ import UsersPage from './pages/Users/UsersPage';
 import CoursesPage from './pages/Courses/CoursesPage';
 import EnrollmentsPage from './pages/Enrollments/EnrollmentsPage';
 import GradesPage from './pages/Grades/GradesPage';
+import TasksPage from './pages/Tasks/TasksPage';
+import StudentTasksPage from './pages/Tasks/StudentTasksPage';
 import ProfilePage from './pages/Profile/ProfilePage';
 import UnauthorizedPage from './pages/Error/UnauthorizedPage';
 import NotFoundPage from './pages/Error/NotFoundPage';
@@ -79,9 +81,9 @@ function App() {
                 </AdminRoute>
               } />
 
-              <Route path="grades" element={
+              <Route path="tasks" element={
                 <AdminRoute>
-                  <GradesPage />
+                  <TasksPage />
                 </AdminRoute>
               } />
 
@@ -98,9 +100,9 @@ function App() {
                 </TeacherRoute>
               } />
 
-              <Route path="my-grades" element={
+              <Route path="my-tasks" element={
                 <TeacherOrAdminRoute>
-                  <GradesPage teacherMode={true} />
+                  <TasksPage />
                 </TeacherOrAdminRoute>
               } />
 
@@ -114,6 +116,12 @@ function App() {
               <Route path="my-enrollments" element={
                 <StudentRoute>
                   <EnrollmentsPage studentMode={true} />
+                </StudentRoute>
+              } />
+
+              <Route path="my-tasks" element={
+                <StudentRoute>
+                  <StudentTasksPage />
                 </StudentRoute>
               } />
 
